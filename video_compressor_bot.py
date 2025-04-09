@@ -26,8 +26,9 @@ logger = logging.getLogger(__name__)
 
 # Configuración del bot
 TOKEN = "7551775190:AAFerA1RVjKl7L7CeD6kKZ3c5dAf9iK-ZJY"
-MAX_FILE_SIZE = 1900 * 1024 * 1024  # 1.9GB - límite máximo para descargar archivos
-MAX_UPLOAD_SIZE = 2000 * 1024 * 1024  # 2GB - límite máximo para subir a Telegram
+MAX_FILE_SIZE = 4000 * 1024 * 1024  # 4GB - aumentado de 1.9GB
+MAX_UPLOAD_SIZE = 4000 * 1024 * 1024  # 4GB - aumentado de 2GB
+CHUNK_SIZE = 1024 * 1024  # 1MB por chunk
 TEMP_DOWNLOAD_DIR = "downloads"
 TEMP_COMPRESSED_DIR = "compressed"
 TEMP_SPLIT_DIR = "split_files"
@@ -51,13 +52,15 @@ original_messages = {}
 
 # Configuraciones predeterminadas de compresión
 DEFAULT_COMPRESSION = {
-    "preset": "medium",  # Opciones: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
-    "crf": 23,  # Factor de tasa constante (0-51): menor valor = mejor calidad
-    "audio_bitrate": "128k",  # Tasa de bits de audio
-    "format": "mp4",  # Formato de salida
-    "codec": "libx264",  # Códec de video
-    "resolution": "original",  # Resolución: original, 1080p, 720p, 480p
-    "speed": "1.0"  # Velocidad de reproducción
+    "preset": "medium",
+    "crf": 23,
+    "audio_bitrate": "128k",
+    "format": "mp4",
+    "codec": "libx264",
+    "resolution": "original",
+    "speed": "1.0",
+    "use_chunks": True,
+    "chunk_size": CHUNK_SIZE
 }
 
 # Crear directorios temporales si no existen
@@ -218,6 +221,20 @@ async def get_video_info(file_path: str) -> dict:
     except Exception as e:
         logger.error(f"Error al obtener información del video: {e}")
         return {}
+    
+async def process_large_file(input_path: str, output_path: str, chunk_size: int = CHUNK_SIZE):
+    """Procesa archivos grandes en chunks."""
+    file_size = os.path.getsize(input_path)
+    total_chunks = (file_size + chunk_size - 1) // chunk_size
+    
+    async with aiofiles.open(output_path, 'wb') as out_file:
+        with open(input_path, 'rb') as in_file:
+            for i in range(total_chunks):
+                chunk = in_file.read(chunk_size)
+                if not chunk:
+                    break
+                await out_file.write(chunk)
+    return output_path
 
 # Función para comprimir video
 async def compress_video(input_file: str, output_file: str, preferences: dict, update: Update, context: ContextTypes.DEFAULT_TYPE, task_id: str):
@@ -317,16 +334,24 @@ async def compress_video(input_file: str, output_file: str, preferences: dict, u
         # Obtener duración total del video
         total_duration = float(probe['format']['duration'])
         
+        # Cámbialo por:
         while True:
-            if process.stdout:
-                line = await process.stdout.readline()
-                if not line:
-                    break
-                
-                line_str = line.decode('utf-8', errors='ignore').strip()
-                
-                # Extraer información de progreso
-                if 'out_time=' in line_str:
+            try:
+                if process.stdout:
+                    line = await asyncio.create_task(process.stdout.readline())
+                    if not line:
+                        break
+            
+                    try:
+                        line_str = line.decode('utf-8', errors='ignore').strip()
+                    except UnicodeDecodeError:
+                        continue
+            except Exception as e:
+                logger.error(f"Error leyendo stdout: {e}")
+                break
+
+            # Extraer información de progreso
+            if 'out_time=' in line_str:
                     time_match = re.search(r'out_time=(\d+):(\d+):(\d+\.\d+)', line_str)
                     if time_match:
                         hours, minutes, seconds = map(float, time_match.groups())
@@ -425,7 +450,7 @@ async def split_video(input_file: str, output_dir: str, segment_time: int, updat
             text=f"❌ Error al dividir el video: {str(e)}"
         )
         return []
-
+    
 # Función para extraer audio de un video
 async def extract_audio(input_file: str, output_file: str, audio_format: str, audio_quality: str, update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -1161,10 +1186,62 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             f"Usa los comandos /compress, /split, /extract, /trim, /frame o /info respondiendo a este mensaje."
         )
 
-# Manejador para callbacks de botones inline
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()  # Importante: siempre responder al callback query
+        
+        callback_data = query.data
+        user_id = query.from_user.id
+        
+        # Manejar menú principal
+        if callback_data.startswith("menu_"):
+            action = callback_data[5:]
+            if action == "compress":
+                await settings_command(update, context)
+            elif action == "split":
+                await split_command(update, context)
+            elif action == "extract_audio":
+                await extract_command(update, context)
+            elif action == "trim":
+                await trim_command(update, context)
+            elif action == "frame":
+                await frame_command(update, context)
+            elif action == "settings":
+                await settings_command(update, context)
+            return
+        
+        # Procesar acciones de compresión y otras operaciones
+        if "_" in callback_data:
+            action, *params = callback_data.split("_")
+            if len(params) >= 1:
+                message_id = params[0]
+                if message_id in original_messages:
+                    file_info = original_messages[message_id]
+                    handlers = {
+                        "comp": process_compression_from_info,
+                        "split": process_split_from_info,
+                        "audio": process_extract_audio_from_info,
+                        "trim": process_trim_from_info,
+                        "frame": process_frame_from_info,
+                        "info": process_info_from_info
+                    }
+                    
+                    if action in handlers:
+                        await handlers[action](update, context, file_info)
+                    return
+                
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="❌ No se pudo procesar el video. Por favor, envía el video nuevamente."
+            )
+            
+    except Exception as e:
+        logger.error(f"Error en callback: {e}")
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="❌ Error al procesar la solicitud. Por favor, intenta nuevamente."
+        )
     
     user_id = query.from_user.id
     callback_data = query.data
