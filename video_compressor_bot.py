@@ -1264,18 +1264,15 @@ async def process_compression_from_info(update: Update, context: ContextTypes.DE
     
     # Registrar la tarea
     active_tasks[task_id] = {
-        "user_id": user_id,
-        "filename": file_name,
-        "status  = {
-        "user_id": user_id,
-        "filename": file_name,
-        "status": "downloading",
-        "start_time": datetime.now(),
-        "original_size": file_size,
-        "compressed_size": None,
-        "download_path": download_path,
-        "output_path": output_path
-    }
+    "user_id": user_id,
+    "filename": file_name,
+    "status": "downloading",
+    "start_time": datetime.now(),
+    "original_size": file_size,
+    "compressed_size": None,
+    "download_path": download_path,
+    "output_path": output_path
+}
     
     # Informar al usuario
     status_message = await context.bot.send_message(
