@@ -1686,7 +1686,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 def main() -> None:
     """Iniciar el bot."""
     # Crear la aplicación
-    application = Application.builder().token(TOKEN).build()
+    application = Application.builder().token(TOKEN).job_queue(True).build()
 
     # Añadir manejadores de comandos
     application.add_handler(CommandHandler("start", start))
