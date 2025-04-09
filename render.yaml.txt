@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: telegram-video-compressor-bot
+    env: docker
+    plan: free
+    buildCommand: docker build -t telegram-video-compressor-bot .
+    startCommand: docker run telegram-video-compressor-bot
+    envVars:
+      - key: TOKEN
+        value: "7551775190:AAFerA1RVjKl7L7CeD6kKZ3c5dAf9iK-ZJY"
