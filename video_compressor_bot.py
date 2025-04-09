@@ -1683,11 +1683,13 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             text="❌ Ha ocurrido un error inesperado. Por favor, intenta nuevamente más tarde."
         )
 
+from telegram.ext import ApplicationBuilder, JobQueue
+
 def main() -> None:
     """Iniciar el bot."""
     # Crear la aplicación
-    application = Application.builder().token(TOKEN).build()
-    application.job_queue = application.create_job_queue()
+    job_queue = JobQueue()
+    application = ApplicationBuilder().token(TOKEN).job_queue(job_queue).build()
 
     # Añadir manejadores de comandos
     application.add_handler(CommandHandler("start", start))
