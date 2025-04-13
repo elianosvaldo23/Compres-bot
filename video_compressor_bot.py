@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuración del bot
-TOKEN = "7551775190:AAFerA1RVjKl7L7CeD6kKZ3c5dAf9iK-ZJY"
+TOKEN = "7716154596:AAFccewMEph4omFDMsJtQrkFY12ZPhn-Xrk"
 MAX_FILE_SIZE = 4000 * 1024 * 1024  # 4GB - aumentado de 1.9GB
 MAX_UPLOAD_SIZE = 4000 * 1024 * 1024  # 4GB - aumentado de 2GB
 CHUNK_SIZE = 1024 * 1024  # 1MB por chunk
